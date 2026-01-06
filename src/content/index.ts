@@ -3,12 +3,23 @@
  * Injected into web pages to extract content and handle conversion
  */
 
-import type { Message, MessageResponse, ConversionResult } from '@/types';
+import type { Message, MessageResponse, ConversionResult, ConversionOptions } from '@/types';
+import { HTMLParser } from '@/core/parsers/html-parser';
+import { ContentExtractor } from '@/core/processors/content-extractor';
+import { NoiseFilter } from '@/core/processors/noise-filter';
 
 class ContentScript {
   private observer: MutationObserver | null = null;
+  private htmlParser: HTMLParser;
+  private contentExtractor: ContentExtractor;
+  private noiseFilter: NoiseFilter;
 
   constructor() {
+    // Initialize parsers and processors
+    this.htmlParser = new HTMLParser();
+    this.contentExtractor = new ContentExtractor();
+    this.noiseFilter = new NoiseFilter();
+
     this.init();
   }
 
@@ -34,10 +45,10 @@ class ContentScript {
     try {
       switch (message.type) {
         case 'CONVERT_PAGE':
-          return await this.convertPage(message.data.url);
+          return await this.convertPage(message.data.url, message.data.options);
 
         case 'CONVERT_SELECTION':
-          return await this.convertSelection();
+          return await this.convertSelection(message.data.options);
 
         default:
           return { success: false, error: 'Unknown message type' };
@@ -51,26 +62,28 @@ class ContentScript {
   /**
    * Convert the entire page to Markdown
    */
-  private async convertPage(url: string): Promise<MessageResponse> {
+  private async convertPage(url: string, options: ConversionOptions): Promise<MessageResponse> {
     try {
-      const result = this.extractPageContent();
-      const markdown = this.htmlToMarkdown(result.html);
+      // Extract main content using intelligent extraction
+      const contentElement = this.contentExtractor.extractMainContent(document);
+      const cleanHtml = this.contentExtractor.cleanupContent(contentElement);
 
-      const conversionResult: ConversionResult = {
-        markdown,
-        title: result.title,
-        url,
-        timestamp: Date.now(),
-        metadata: {
-          wordCount: this.countWords(markdown),
-          imageCount: this.countImages(markdown),
-          codeBlocks: this.countCodeBlocks(markdown),
-        },
+      // Apply noise filtering
+      const filteredHtml = this.noiseFilter.clean(cleanHtml);
+
+      // Convert to Markdown using TurndownJS
+      const result = await this.htmlParser.parse(filteredHtml, options);
+
+      // Override URL and add metadata
+      result.url = url;
+      result.metadata = {
+        ...result.metadata,
+        ...this.contentExtractor.extractMetadata(document),
       };
 
-      await this.saveToHistory(conversionResult);
+      await this.saveToHistory(result);
 
-      return { success: true, data: conversionResult };
+      return { success: true, data: result };
     } catch (error) {
       return { success: false, error: (error as Error).message };
     }
@@ -79,7 +92,7 @@ class ContentScript {
   /**
    * Convert selected text to Markdown
    */
-  private async convertSelection(): Promise<MessageResponse> {
+  private async convertSelection(options: ConversionOptions): Promise<MessageResponse> {
     try {
       const selection = window.getSelection();
       if (!selection || selection.rangeCount === 0) {
@@ -91,147 +104,26 @@ class ContentScript {
       const div = document.createElement('div');
       div.appendChild(container);
 
-      const html = div.innerHTML;
-      const markdown = this.htmlToMarkdown(html);
+      // Get HTML from selection
+      let html = div.innerHTML;
 
-      const conversionResult: ConversionResult = {
-        markdown,
-        title: selection.toString().slice(0, 50) + '...',
-        url: window.location.href,
-        timestamp: Date.now(),
-        metadata: {
-          wordCount: this.countWords(markdown),
-        },
-      };
+      // Apply noise filtering
+      html = this.noiseFilter.clean(html);
 
-      await this.saveToHistory(conversionResult);
+      // Convert to Markdown
+      const result = await this.htmlParser.parse(html, options);
 
-      return { success: true, data: conversionResult };
+      // Override title and URL
+      const selectedText = selection.toString();
+      result.title = selectedText.slice(0, 50) + (selectedText.length > 50 ? '...' : '');
+      result.url = window.location.href;
+
+      await this.saveToHistory(result);
+
+      return { success: true, data: result };
     } catch (error) {
       return { success: false, error: (error as Error).message };
     }
-  }
-
-  /**
-   * Extract the main content from the page
-   */
-  private extractPageContent(): { html: string; title: string } {
-    // Try to find the main content area
-    const contentSelectors = [
-      'article',
-      '[role="main"]',
-      'main',
-      '.content',
-      '.post',
-      '.article',
-      '.entry-content',
-      '#content',
-      'body',
-    ];
-
-    let contentElement: HTMLElement | null = null;
-    for (const selector of contentSelectors) {
-      contentElement = document.querySelector(selector);
-      if (contentElement) break;
-    }
-
-    if (!contentElement) {
-      contentElement = document.body;
-    }
-
-    // Clone the element to avoid modifying the page
-    const clone = contentElement.cloneNode(true) as HTMLElement;
-
-    // Remove unwanted elements
-    const unwantedSelectors = [
-      'script',
-      'style',
-      'nav',
-      'header',
-      'footer',
-      '.sidebar',
-      '.comments',
-      '.advertisement',
-      '.ad',
-      '.social-share',
-      '.related-posts',
-    ];
-
-    unwantedSelectors.forEach((selector) => {
-      clone.querySelectorAll(selector).forEach((el) => el.remove());
-    });
-
-    return {
-      html: clone.innerHTML,
-      title: document.title || 'Untitled',
-    };
-  }
-
-  /**
-   * Convert HTML to Markdown
-   * TODO: Replace with TurndownJS in Phase 2
-   */
-  private htmlToMarkdown(html: string): string {
-    // Basic HTML to Markdown conversion
-    // This is a simplified version - will be replaced with TurndownJS
-
-    let markdown = html;
-
-    // Headers
-    markdown = markdown.replace(/<h1[^>]*>(.*?)<\/h1>/gi, '# $1\n\n');
-    markdown = markdown.replace(/<h2[^>]*>(.*?)<\/h2>/gi, '## $1\n\n');
-    markdown = markdown.replace(/<h3[^>]*>(.*?)<\/h3>/gi, '### $1\n\n');
-    markdown = markdown.replace(/<h4[^>]*>(.*?)<\/h4>/gi, '#### $1\n\n');
-    markdown = markdown.replace(/<h5[^>]*>(.*?)<\/h5>/gi, '##### $1\n\n');
-    markdown = markdown.replace(/<h6[^>]*>(.*?)<\/h6>/gi, '###### $1\n\n');
-
-    // Bold and Italic
-    markdown = markdown.replace(/<strong[^>]*>(.*?)<\/strong>/gi, '**$1**');
-    markdown = markdown.replace(/<b[^>]*>(.*?)<\/b>/gi, '**$1**');
-    markdown = markdown.replace(/<em[^>]*>(.*?)<\/em>/gi, '*$1*');
-    markdown = markdown.replace(/<i[^>]*>(.*?)<\/i>/gi, '*$1*');
-
-    // Links
-    markdown = markdown.replace(/<a[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/gi, '[$2]($1)');
-
-    // Images
-    markdown = markdown.replace(/<img[^>]*src="([^"]*)"[^>]*alt="([^"]*)"[^>]*>/gi, '![$2]($1)');
-    markdown = markdown.replace(/<img[^>]*src="([^"]*)"[^>]*>/gi, '![]($1)');
-
-    // Code blocks
-    markdown = markdown.replace(/<pre[^>]*><code[^>]*>(.*?)<\/code><\/pre>/gis, '```\n$1\n```\n\n');
-    markdown = markdown.replace(/<code[^>]*>(.*?)<\/code>/gi, '`$1`');
-
-    // Lists
-    markdown = markdown.replace(/<ul[^>]*>([\s\S]*?)<\/ul>/gi, (match, content) => {
-      return content.replace(/<li[^>]*>(.*?)<\/li>/gi, '- $1\n') + '\n';
-    });
-    markdown = markdown.replace(/<ol[^>]*>([\s\S]*?)<\/ol>/gi, (match, content) => {
-      let index = 1;
-      return content.replace(/<li[^>]*>(.*?)<\/li>/gi, () => `${index++}. $1\n`) + '\n';
-    });
-
-    // Blockquotes
-    markdown = markdown.replace(/<blockquote[^>]*>(.*?)<\/blockquote>/gis, '> $1\n\n');
-
-    // Paragraphs and line breaks
-    markdown = markdown.replace(/<p[^>]*>(.*?)<\/p>/gi, '$1\n\n');
-    markdown = markdown.replace(/<br[^>]*>/gi, '\n');
-
-    // Remove remaining HTML tags
-    markdown = markdown.replace(/<[^>]+>/g, '');
-
-    // Decode HTML entities
-    const textArea = document.createElement('textarea');
-    markdown = markdown.replace(/&([^;]+);/g, (match, entity) => {
-      textArea.innerHTML = match;
-      return textArea.value;
-    });
-
-    // Clean up extra whitespace
-    markdown = markdown.replace(/\n{3,}/g, '\n\n');
-
-    return markdown.trim();
   }
 
   /**
@@ -242,8 +134,11 @@ class ContentScript {
     const storageResult = await chrome.storage.local.get(STORAGE_KEYS.HISTORY);
     const history = storageResult[STORAGE_KEYS.HISTORY] || [];
 
+    // Generate unique ID
+    const id = `mdflow_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
     // Add new item to the beginning
-    history.unshift(result);
+    history.unshift({ id, taskId: id, ...result });
 
     // Limit history size
     const maxHistory = 100;
@@ -257,34 +152,12 @@ class ContentScript {
   }
 
   /**
-   * Count words in markdown text
-   */
-  private countWords(markdown: string): number {
-    return markdown.trim().split(/\s+/).length;
-  }
-
-  /**
-   * Count images in markdown text
-   */
-  private countImages(markdown: string): number {
-    return (markdown.match(/!\[.*?\]\(.*?\)/g) || []).length;
-  }
-
-  /**
-   * Count code blocks in markdown text
-   */
-  private countCodeBlocks(markdown: string): number {
-    return (markdown.match(/```/g) || []).length / 2;
-  }
-
-  /**
    * Setup page monitoring for dynamic content
    */
   private setupPageMonitoring() {
     // Monitor for page changes that might affect content extraction
     this.observer = new MutationObserver(() => {
       // Page content has changed - could be useful for auto-conversion
-      // For now, we just log it
       console.debug('Page content changed');
     });
 

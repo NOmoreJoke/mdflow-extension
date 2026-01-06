@@ -4,7 +4,7 @@
  */
 
 import { CONTEXT_MENU_IDS, STORAGE_KEYS } from '@/types/config';
-import type { Message, MessageResponse } from '@/types';
+import type { Message, MessageResponse, ConversionResult, AppConfig, ConversionOptions } from '@/types';
 
 class BackgroundService {
   constructor() {
@@ -91,12 +91,28 @@ class BackgroundService {
    */
   private async convertPage(tabId: number, url: string) {
     try {
+      // Get user config
+      const configResult = await this.getConfig();
+      const config = (configResult.data || {}) as AppConfig;
+
+      // Get conversion options
+      const options = this.getConversionOptions(config);
+
       const response = await chrome.tabs.sendMessage(tabId, {
         type: 'CONVERT_PAGE',
-        data: { url },
+        data: { url, options },
       });
 
       if (response?.success) {
+        const result = response.data as ConversionResult;
+
+        // Handle output based on config
+        if (config.autoDownload) {
+          await this.downloadFile(result);
+        } else {
+          await this.copyToClipboard(result.markdown);
+        }
+
         this.showNotification('Page converted successfully!', 'success');
       } else {
         this.showNotification('Conversion failed: ' + response?.error, 'error');
@@ -112,12 +128,24 @@ class BackgroundService {
    */
   private async convertSelection(tabId: number) {
     try {
+      // Get user config
+      const configResult = await this.getConfig();
+      const config = (configResult.data || {}) as AppConfig;
+
+      // Get conversion options
+      const options = this.getConversionOptions(config);
+
       const response = await chrome.tabs.sendMessage(tabId, {
         type: 'CONVERT_SELECTION',
-        data: {},
+        data: { options },
       });
 
       if (response?.success) {
+        const result = response.data as ConversionResult;
+
+        // Always copy selection to clipboard
+        await this.copyToClipboard(result.markdown);
+
         this.showNotification('Selection converted!', 'success');
       } else {
         this.showNotification('Conversion failed: ' + response?.error, 'error');
@@ -126,6 +154,20 @@ class BackgroundService {
       console.error('Error converting selection:', error);
       this.showNotification('Conversion failed', 'error');
     }
+  }
+
+  /**
+   * Get conversion options from config
+   */
+  private getConversionOptions(config: AppConfig): ConversionOptions {
+    return {
+      format: config.defaultFormat || 'markdown',
+      includeMetadata: true,
+      preserveFormatting: true,
+      downloadImages: false,
+      mathJax: false,
+      codeHighlight: true,
+    };
   }
 
   /**
@@ -275,10 +317,64 @@ class BackgroundService {
   private async copyToClipboard(text: string): Promise<MessageResponse> {
     try {
       await navigator.clipboard.writeText(text);
+
+      // Get config to check if notification should be shown
+      const configResult = await this.getConfig();
+      const config = configResult.data as AppConfig;
+
+      if (config.showNotifications !== false) {
+        this.showNotification('Copied to clipboard!', 'success');
+      }
+
       return { success: true };
     } catch (error) {
       return { success: false, error: (error as Error).message };
     }
+  }
+
+  /**
+   * Download markdown as a file
+   */
+  private async downloadFile(result: ConversionResult): Promise<void> {
+    try {
+      // Create blob
+      const blob = new Blob([result.markdown], { type: 'text/markdown;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+
+      // Sanitize filename
+      const filename = this.sanitizeFilename(result.title);
+
+      // Download file
+      await chrome.downloads.download({
+        url,
+        filename: `mdflow/${filename}.md`,
+        saveAs: false,
+      });
+
+      // Clean up object URL
+      setTimeout(() => URL.revokeObjectURL(url), 100);
+    } catch (error) {
+      console.error('Error downloading file:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Sanitize filename for safe download
+   */
+  private sanitizeFilename(filename: string): string {
+    // Remove invalid characters
+    let sanitized = filename
+      .replace(/[<>:"/\\|?*]/g, '')
+      .replace(/\s+/g, '_')
+      .slice(0, 200); // Limit length
+
+    // If empty, use default
+    if (!sanitized) {
+      sanitized = 'untitled';
+    }
+
+    return sanitized;
   }
 
   /**
