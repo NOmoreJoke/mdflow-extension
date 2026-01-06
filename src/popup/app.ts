@@ -117,7 +117,20 @@ class PopupApp {
   }
 
   private async processFile(file: File) {
-    this.showToast('Processing file...', 'info');
+    // Check file type
+    const fileType = file.type;
+    const fileName = file.name.toLowerCase();
+    const isPdf = fileType === 'application/pdf' || fileName.endsWith('.pdf');
+    const isDocx =
+      fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+      fileName.endsWith('.docx');
+
+    if (!isPdf && !isDocx) {
+      this.showToast('Unsupported file type. Please select PDF or DOCX files.', 'error');
+      return;
+    }
+
+    this.showToast(`Processing ${isPdf ? 'PDF' : 'DOCX'} file...`, 'info');
 
     try {
       const response = await chrome.runtime.sendMessage({
@@ -133,7 +146,7 @@ class PopupApp {
       }
     } catch (error) {
       console.error('Error processing file:', error);
-      this.showToast('An error occurred', 'error');
+      this.showToast('An error occurred while processing the file', 'error');
     }
   }
 

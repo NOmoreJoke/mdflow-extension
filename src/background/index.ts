@@ -5,9 +5,18 @@
 
 import { CONTEXT_MENU_IDS, STORAGE_KEYS } from '@/types/config';
 import type { Message, MessageResponse, ConversionResult, AppConfig, ConversionOptions } from '@/types';
+import { PDFParser } from '@/core/parsers/pdf-parser';
+import { DocxParser } from '@/core/parsers/docx-parser';
 
 class BackgroundService {
+  private pdfParser: PDFParser;
+  private docxParser: DocxParser;
+
   constructor() {
+    // Initialize parsers
+    this.pdfParser = new PDFParser();
+    this.docxParser = new DocxParser();
+
     this.init();
   }
 
@@ -240,12 +249,77 @@ class BackgroundService {
    * Handle file conversion
    */
   private async handleFileConversion(file: File): Promise<MessageResponse> {
-    // TODO: Implement file conversion logic
-    // This will be implemented in Phase 3
-    return {
-      success: false,
-      error: 'File conversion not yet implemented',
-    };
+    try {
+      const fileType = file.type;
+      const fileName = file.name.toLowerCase();
+      const configResult = await this.getConfig();
+      const config = (configResult.data || {}) as AppConfig;
+      const options = this.getConversionOptions(config);
+
+      let result: ConversionResult;
+
+      // Detect file type and use appropriate parser
+      if (fileType === 'application/pdf' || fileName.endsWith('.pdf')) {
+        result = await this.pdfParser.parse(file, options);
+      } else if (
+        fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+        fileType === 'application/msword' ||
+        fileName.endsWith('.docx') ||
+        fileName.endsWith('.doc')
+      ) {
+        result = await this.docxParser.parse(file, options);
+      } else {
+        return {
+          success: false,
+          error: `Unsupported file type: ${fileType}`,
+        };
+      }
+
+      // Generate unique ID
+      const id = `mdflow_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+      // Add to history
+      await this.saveConversionToHistory({ id, taskId: id, ...result });
+
+      // Handle output based on config
+      if (config.autoDownload) {
+        await this.downloadFile(result);
+      } else {
+        await this.copyToClipboard(result.markdown);
+      }
+
+      this.showNotification('File converted successfully!', 'success');
+
+      return { success: true, data: result };
+    } catch (error) {
+      console.error('Error converting file:', error);
+      this.showNotification('File conversion failed: ' + (error as Error).message, 'error');
+      return {
+        success: false,
+        error: (error as Error).message,
+      };
+    }
+  }
+
+  /**
+   * Save conversion result to history
+   */
+  private async saveConversionToHistory(result: ConversionResult & { id: string; taskId: string }): Promise<void> {
+    const storageResult = await chrome.storage.local.get(STORAGE_KEYS.HISTORY);
+    const history = storageResult[STORAGE_KEYS.HISTORY] || [];
+
+    // Add new item to the beginning
+    history.unshift(result);
+
+    // Limit history size
+    const maxHistory = 100;
+    if (history.length > maxHistory) {
+      history.splice(maxHistory);
+    }
+
+    await chrome.storage.local.set({
+      [STORAGE_KEYS.HISTORY]: history,
+    });
   }
 
   /**
