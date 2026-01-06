@@ -1,0 +1,32 @@
+{
+  "extensionName": {
+    "message": "MDFlow - Web to Markdown Converter"
+  },
+  "extensionDescription": {
+    "message": "Convert web pages, PDFs, and documents to clean Markdown format"
+  },
+  "actionTitle": {
+    "message": "Convert to Markdown"
+  },
+  "commandConvert": {
+    "message": "Convert current page to Markdown"
+  },
+  "commandConvertSelection": {
+    "message": "Convert selected content to Markdown"
+  },
+  "contextMenuPage": {
+    "message": "Convert Page to Markdown"
+  },
+  "contextMenuSelection": {
+    "message": "Convert Selection to Markdown"
+  },
+  "contextMenuLink": {
+    "message": "Convert Link to Markdown"
+  },
+  "contextMenuImage": {
+    "message": "Convert Image to Markdown"
+  },
+  "contextMenuPDF": {
+    "message": "Convert PDF to Markdown"
+  }
+}

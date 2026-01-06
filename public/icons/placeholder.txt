@@ -1,0 +1,16 @@
+# Placeholder Icons
+
+For development, create simple placeholder icons:
+
+1. Create a simple 128x128 PNG image with a design of your choice
+2. Resize/copy it to the following files:
+   - icon16.png (16x16)
+   - icon48.png (48x48)
+   - icon128.png (128x128)
+
+Quick online tool: https://placeholder.com/
+
+Or use any image editing tool to create simple icons with:
+- Background color: #6366f1 (primary brand color)
+- Text or symbol: "MD" or a document icon
+- For dark theme compatibility, consider using a light background

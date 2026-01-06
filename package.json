@@ -1,0 +1,53 @@
+{
+  "name": "mdflow-extension",
+  "displayName": "MDFlow - Web to Markdown Converter",
+  "version": "0.1.0",
+  "description": "Convert web pages and documents to clean Markdown format",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "lint:fix": "eslint src --ext ts,tsx --fix",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "date-fns": "^3.3.1",
+    "idb": "^8.0.0",
+    "mammoth": "^1.7.1",
+    "pdfjs-dist": "^4.0.379",
+    "turndown": "^7.1.2",
+    "turndown-plugin-gfm": "^1.0.2"
+  },
+  "devDependencies": {
+    "@crxjs/vite-plugin": "^2.0.0-beta.23",
+    "@playwright/test": "^1.43.0",
+    "@types/chrome": "^0.0.258",
+    "@types/node": "^20.11.28",
+    "@typescript-eslint/eslint-plugin": "^7.3.1",
+    "@typescript-eslint/parser": "^7.3.1",
+    "@vitejs/plugin-react": "^4.2.1",
+    "@web/test-runner": "^0.18.2",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-prettier": "^5.1.3",
+    "prettier": "^3.2.5",
+    "sharp": "^0.34.5",
+    "typescript": "^5.4.3",
+    "vite": "^5.2.6",
+    "vitest": "^1.4.0"
+  },
+  "keywords": [
+    "chrome-extension",
+    "markdown",
+    "pdf-converter",
+    "web-scraping",
+    "knowledge-management"
+  ],
+  "author": "MDFlow Team",
+  "license": "MIT"
+}

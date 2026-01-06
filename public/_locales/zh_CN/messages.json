@@ -1,0 +1,32 @@
+{
+  "extensionName": {
+    "message": "MDFlow - 网页转 Markdown"
+  },
+  "extensionDescription": {
+    "message": "将网页和文档转换为干净的 Markdown 格式，支持 PDF、Word 和 HTML"
+  },
+  "actionTitle": {
+    "message": "转换为 Markdown"
+  },
+  "commandConvert": {
+    "message": "转换当前页面为 Markdown"
+  },
+  "commandConvertSelection": {
+    "message": "转换选中内容为 Markdown"
+  },
+  "contextMenuPage": {
+    "message": "转换页面为 Markdown"
+  },
+  "contextMenuSelection": {
+    "message": "转换选中内容为 Markdown"
+  },
+  "contextMenuLink": {
+    "message": "转换链接为 Markdown"
+  },
+  "contextMenuImage": {
+    "message": "转换图片为 Markdown"
+  },
+  "contextMenuPDF": {
+    "message": "转换 PDF 为 Markdown"
+  }
+}

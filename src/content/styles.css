@@ -1,0 +1,80 @@
+/**
+ * Content Script Styles
+ * Injected into web pages for MDFlow styling
+ */
+
+/* MDFlow selection highlight */
+.mdflow-selection-highlight {
+  background-color: rgba(99, 102, 241, 0.1) !important;
+  outline: 2px solid rgba(99, 102, 241, 0.5) !important;
+  border-radius: 4px !important;
+}
+
+/* MDFlow processing indicator */
+.mdflow-processing {
+  position: fixed !important;
+  top: 20px !important;
+  right: 20px !important;
+  padding: 12px 20px !important;
+  background-color: #6366f1 !important;
+  color: white !important;
+  border-radius: 8px !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+  z-index: 2147483647 !important;
+  animation: mdflowSlideIn 0.3s ease-out !important;
+}
+
+@keyframes mdflowSlideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* MDFlow success toast */
+.mdflow-toast {
+  position: fixed !important;
+  bottom: 20px !important;
+  right: 20px !important;
+  padding: 12px 20px !important;
+  background-color: #10b981 !important;
+  color: white !important;
+  border-radius: 8px !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+  z-index: 2147483647 !important;
+  animation: mdflowFadeIn 0.3s ease-out !important;
+}
+
+.mdflow-toast.error {
+  background-color: #ef4444 !important;
+}
+
+@keyframes mdflowFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Ensure MDFlow elements don't interfere with page styles */
+.mdflow-selection-highlight,
+.mdflow-processing,
+.mdflow-toast {
+  all: initial;
+  position: fixed !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+}
