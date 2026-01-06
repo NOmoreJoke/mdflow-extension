@@ -88,15 +88,24 @@ export type Message =
   | { type: 'CONVERT_PAGE'; data: { url: string; options: ConversionOptions } }
   | { type: 'CONVERT_SELECTION'; data: { html: string; options: ConversionOptions } }
   | { type: 'CONVERT_FILE'; data: { file: File; options: ConversionOptions } }
+  | { type: 'CONVERT_LINK'; data: { url: string } }
   | { type: 'GET_HISTORY' }
   | { type: 'DELETE_HISTORY_ITEM'; data: { id: string } }
   | { type: 'GET_CONFIG' }
   | { type: 'UPDATE_CONFIG'; data: Partial<AppConfig> }
-  | { type: 'COPY_TO_CLIPBOARD'; data: { text: string } };
+  | { type: 'COPY_TO_CLIPBOARD'; data: { text: string } }
+  | { type: 'BATCH_CONVERT'; data: { items: Array<{ urlOrFile: string | File; type: string }>; options: ConversionOptions } }
+  | { type: 'GET_QUEUE_STATS' }
+  | { type: 'PAUSE_QUEUE' }
+  | { type: 'RESUME_QUEUE' }
+  | { type: 'CLEAR_QUEUE' };
 
 export type MessageResponse =
   | { success: true; data: ConversionResult }
   | { success: true; data: HistoryItem[] }
   | { success: true; data: AppConfig }
+  | { success: true; data: { tasks: Array<{ id: string; status: string }>; message: string } }
+  | { success: true; data: { total: number; pending: number; processing: number; completed: number; failed: number } }
+  | { success: true; data: { message: string } }
   | { success: false; error: string }
   | { success: boolean };

@@ -7,20 +7,32 @@ import { CONTEXT_MENU_IDS, STORAGE_KEYS } from '@/types/config';
 import type { Message, MessageResponse, ConversionResult, AppConfig, ConversionOptions } from '@/types';
 import { PDFParser } from '@/core/parsers/pdf-parser';
 import { DocxParser } from '@/core/parsers/docx-parser';
+import { TaskQueue, type TaskCallback } from '@/core/task-queue';
+import { indexedDBStorage } from '@/storage';
 
 class BackgroundService {
   private pdfParser: PDFParser;
   private docxParser: DocxParser;
+  private taskQueue: TaskQueue;
 
   constructor() {
     // Initialize parsers
     this.pdfParser = new PDFParser();
     this.docxParser = new DocxParser();
 
+    // Initialize task queue with 3 concurrent tasks
+    this.taskQueue = new TaskQueue({
+      concurrent: 3,
+      autoStart: true,
+    });
+
     this.init();
   }
 
   private async init() {
+    // Initialize IndexedDB
+    await indexedDBStorage.init();
+
     await this.createContextMenus();
     this.setupMessageListener();
     this.setupCommandListener();
@@ -236,6 +248,21 @@ class BackgroundService {
         case 'COPY_TO_CLIPBOARD':
           return await this.copyToClipboard(message.data.text);
 
+        case 'BATCH_CONVERT':
+          return await this.handleBatchConvert(message.data.items, message.data.options);
+
+        case 'GET_QUEUE_STATS':
+          return await this.getQueueStats();
+
+        case 'PAUSE_QUEUE':
+          return this.pauseQueue();
+
+        case 'RESUME_QUEUE':
+          return this.resumeQueue();
+
+        case 'CLEAR_QUEUE':
+          return this.clearQueue();
+
         default:
           return { success: false, error: 'Unknown message type' };
       }
@@ -305,6 +332,7 @@ class BackgroundService {
    * Save conversion result to history
    */
   private async saveConversionToHistory(result: ConversionResult & { id: string; taskId: string }): Promise<void> {
+    // Save to chrome.storage.local for backward compatibility
     const storageResult = await chrome.storage.local.get(STORAGE_KEYS.HISTORY);
     const history = storageResult[STORAGE_KEYS.HISTORY] || [];
 
@@ -320,6 +348,13 @@ class BackgroundService {
     await chrome.storage.local.set({
       [STORAGE_KEYS.HISTORY]: history,
     });
+
+    // Also save to IndexedDB
+    try {
+      await indexedDBStorage.addHistory(result);
+    } catch (error) {
+      console.error('Error saving to IndexedDB:', error);
+    }
   }
 
   /**
@@ -502,6 +537,111 @@ class BackgroundService {
     };
 
     chrome.notifications.create(notificationOptions);
+  }
+
+  /**
+   * Handle batch conversion
+   */
+  private async handleBatchConvert(
+    items: Array<{ urlOrFile: string | File; type: string }>,
+    options: ConversionOptions
+  ): Promise<MessageResponse> {
+    try {
+      const configResult = await this.getConfig();
+      const config = (configResult.data || {}) as AppConfig;
+      const finalOptions = { ...options, ...this.getConversionOptions(config) };
+
+      // Create callback for task completion
+      const callback: TaskCallback = {
+        onProgress: (task) => {
+          console.log(`Task ${task.id} in progress: ${task.status}`);
+        },
+        onComplete: async (task, result) => {
+          console.log(`Task ${task.id} completed`);
+          this.showNotification(`Conversion complete: ${result.title}`, 'success');
+
+          // Handle output based on config
+          if (config.autoDownload) {
+            await this.downloadFile(result);
+          }
+        },
+        onError: (task, error) => {
+          console.error(`Task ${task.id} failed:`, error);
+          this.showNotification(`Conversion failed: ${error.message}`, 'error');
+        },
+      };
+
+      // Add all tasks to queue
+      const tasks = this.taskQueue.addBatch(
+        items.map(item => ({
+          urlOrFile: item.urlOrFile,
+          type: item.type as any,
+          options: finalOptions,
+        })),
+        callback
+      );
+
+      return {
+        success: true,
+        data: {
+          tasks: tasks.map(t => ({ id: t.id, status: t.status })),
+          message: `Added ${tasks.length} tasks to queue`,
+        },
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: (error as Error).message,
+      };
+    }
+  }
+
+  /**
+   * Get queue statistics
+   */
+  private async getQueueStats(): Promise<MessageResponse> {
+    try {
+      const stats = this.taskQueue.getStats();
+      return { success: true, data: stats };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  }
+
+  /**
+   * Pause task queue
+   */
+  private pauseQueue(): MessageResponse {
+    try {
+      this.taskQueue.pause();
+      return { success: true, data: { message: 'Queue paused' } };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  }
+
+  /**
+   * Resume task queue
+   */
+  private resumeQueue(): MessageResponse {
+    try {
+      this.taskQueue.resume();
+      return { success: true, data: { message: 'Queue resumed' } };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  }
+
+  /**
+   * Clear task queue
+   */
+  private clearQueue(): MessageResponse {
+    try {
+      this.taskQueue.clear();
+      return { success: true, data: { message: 'Queue cleared' } };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
   }
 }
 

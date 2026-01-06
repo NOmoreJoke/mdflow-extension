@@ -483,6 +483,109 @@ body {
   background-color: var(--bg-tertiary);
 }
 
+.action-button.danger {
+  background-color: var(--danger-color);
+  color: white;
+}
+
+.action-button.danger:hover {
+  background-color: #dc2626;
+}
+
+/* Batch Mode */
+.batch-mode-toggle {
+  color: var(--primary-color);
+}
+
+.batch-mode-toggle:hover {
+  background-color: var(--primary-light);
+}
+
+.batch-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding-left: 16px;
+  border-left: 1px solid var(--border-color);
+}
+
+body.batch-mode .batch-actions {
+  display: flex !important;
+}
+
+body.batch-mode .filter-select {
+  display: none;
+}
+
+.select-all-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.select-all-wrapper input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--primary-color);
+}
+
+.batch-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.history-item-checkbox {
+  display: none;
+}
+
+body.batch-mode .history-item-checkbox {
+  display: flex;
+  align-items: center;
+  padding-right: 12px;
+}
+
+body.batch-mode .history-item-checkbox input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--primary-color);
+}
+
+body.batch-mode .history-item {
+  cursor: default;
+}
+
+body.batch-mode .history-item.selected {
+  border-color: var(--primary-color);
+  background-color: var(--primary-light);
+}
+
+body.batch-mode .history-item-actions {
+  display: none;
+}
+
+body.batch-mode .history-item:hover {
+  transform: none;
+}
+
+.text-button:not(.batch-mode-toggle):not([id="exportBtn"]) {
+  color: var(--danger-color);
+}
+
+#exportBtn {
+  color: var(--primary-color);
+}
+
+#exportBtn:hover {
+  background-color: var(--primary-light);
+}
+
 /* Toast */
 .toast {
   position: fixed;

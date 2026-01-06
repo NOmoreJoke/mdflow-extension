@@ -4,6 +4,7 @@
  */
 
 export { ChromeStorageService, storageLocal, storageSync } from './chrome-storage';
+export { IndexedDBStorage, indexedDBStorage } from './indexed-db';
 
 // Re-export types for convenience
 export type { StorageService } from '@/types';

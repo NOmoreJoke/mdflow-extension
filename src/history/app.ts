@@ -1,5 +1,11 @@
 import { STORAGE_KEYS } from '@/types/config';
 import type { ConversionResult } from '@/types';
+import { indexedDBStorage } from '@/storage';
+
+interface BatchOperation {
+  action: 'download' | 'delete' | 'export';
+  items: ConversionResult[];
+}
 
 class HistoryApp {
   private historyList: HTMLElement;
@@ -13,6 +19,10 @@ class HistoryApp {
   private history: ConversionResult[] = [];
   private filteredHistory: ConversionResult[] = [];
   private selectedItem: ConversionResult | null = null;
+  private selectedItems: Set<string> = new Set();
+  private batchMode: boolean = false;
+  private selectAllCheckbox: HTMLInputElement | null = null;
+  private exportBtn: HTMLElement | null = null;
 
   constructor() {
     this.historyList = document.getElementById('historyList')!;
@@ -23,14 +33,28 @@ class HistoryApp {
     this.modalContent = this.detailModal.querySelector('.modal-content') as HTMLElement;
     this.modalTitle = document.getElementById('modalTitle')!;
     this.modalPreview = document.getElementById('modalContent')!;
+    this.selectAllCheckbox = document.getElementById('selectAllCheckbox') as HTMLInputElement;
+    this.exportBtn = document.getElementById('exportBtn');
 
     this.init();
   }
 
   private async init() {
     await this.loadHistory();
+    await this.initIndexedDB();
     this.bindEvents();
     this.renderHistory();
+  }
+
+  /**
+   * Initialize IndexedDB
+   */
+  private async initIndexedDB() {
+    try {
+      await indexedDBStorage.init();
+    } catch (error) {
+      console.error('Failed to initialize IndexedDB:', error);
+    }
   }
 
   private async loadHistory() {
@@ -72,6 +96,22 @@ class HistoryApp {
     document.getElementById('copyModalBtn')?.addEventListener('click', () => this.copySelectedItem());
     document.getElementById('downloadModalBtn')?.addEventListener('click', () => this.downloadSelectedItem());
 
+    // Batch mode toggle
+    document.getElementById('batchModeBtn')?.addEventListener('click', () => this.toggleBatchMode());
+
+    // Select all checkbox
+    this.selectAllCheckbox?.addEventListener('change', () => this.toggleSelectAll());
+
+    // Batch actions
+    document.getElementById('batchDownloadBtn')?.addEventListener('click', () => this.batchDownload());
+    document.getElementById('batchDeleteBtn')?.addEventListener('click', () => this.batchDelete());
+
+    // Export button
+    this.exportBtn?.addEventListener('click', () => this.exportHistory());
+
+    // Re-export button in modal
+    document.getElementById('reexportBtn')?.addEventListener('click', () => this.reexportSelectedItem());
+
     // Keyboard shortcut to close modal
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
@@ -93,7 +133,12 @@ class HistoryApp {
     this.historyList.innerHTML = this.filteredHistory
       .map(
         (item, index) => `
-      <div class="history-item" data-index="${index}">
+      <div class="history-item${this.selectedItems.has(`${item.timestamp}`) ? ' selected' : ''}" data-index="${index}">
+        ${this.batchMode ? `
+        <div class="history-item-checkbox">
+          <input type="checkbox" ${this.selectedItems.has(`${item.timestamp}`) ? 'checked' : ''} data-item-checkbox="${index}">
+        </div>
+        ` : ''}
         <div class="history-item-icon">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M14 2H6C5.46957 2 4.96086 2.21071 4.58579 2.58579C4.21071 2.96086 4 3.46957 4 4V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V8L14 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -188,13 +233,35 @@ class HistoryApp {
       });
     });
 
-    // Bind item click to open modal
+    // Bind item checkboxes in batch mode
+    if (this.batchMode) {
+      this.historyList.querySelectorAll('[data-item-checkbox]').forEach((checkbox) => {
+        checkbox.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const index = parseInt((checkbox as HTMLElement).dataset.itemCheckbox!);
+          const item = this.filteredHistory[index];
+          if (item) {
+            this.toggleItemSelection(item);
+          }
+        });
+      });
+    }
+
+    // Bind item click to open modal or select in batch mode
     this.historyList.querySelectorAll('.history-item').forEach((item) => {
       item.addEventListener('click', (e) => {
-        if (!(e.target as HTMLElement).closest('.action-icon-button')) {
+        if (!(e.target as HTMLElement).closest('.action-icon-button') &&
+            !(e.target as HTMLElement).closest('[data-item-checkbox]')) {
           const index = (item as HTMLElement).dataset.index;
           if (index) {
-            this.openModal(parseInt(index));
+            if (this.batchMode) {
+              const itemData = this.filteredHistory[parseInt(index)];
+              if (itemData) {
+                this.toggleItemSelection(itemData);
+              }
+            } else {
+              this.openModal(parseInt(index));
+            }
           }
         }
       });
@@ -250,17 +317,33 @@ class HistoryApp {
 
     switch (action) {
       case 'view':
-        this.openModal(index);
+        if (this.batchMode) {
+          this.toggleItemSelection(item);
+        } else {
+          this.openModal(index);
+        }
         break;
       case 'copy':
-        await this.copyToClipboard(item.markdown);
-        this.showToast('Copied to clipboard!', 'success');
+        if (this.batchMode) {
+          this.toggleItemSelection(item);
+        } else {
+          await this.copyToClipboard(item.markdown);
+          this.showToast('Copied to clipboard!', 'success');
+        }
         break;
       case 'download':
-        this.downloadItem(item);
+        if (this.batchMode) {
+          this.toggleItemSelection(item);
+        } else {
+          this.downloadItem(item);
+        }
         break;
       case 'delete':
-        await this.deleteItem(item);
+        if (this.batchMode) {
+          this.toggleItemSelection(item);
+        } else {
+          await this.deleteItem(item);
+        }
         break;
     }
   }
@@ -312,17 +395,19 @@ class HistoryApp {
     });
   }
 
-  private async deleteItem(item: ConversionResult) {
-    if (!confirm('Are you sure you want to delete this item?')) return;
+  private async deleteItem(item: ConversionResult, skipConfirm: boolean = false) {
+    if (!skipConfirm && !confirm('Are you sure you want to delete this item?')) return;
 
     this.history = this.history.filter((h) => h.timestamp !== item.timestamp);
     await chrome.storage.local.set({
       [STORAGE_KEYS.HISTORY]: this.history,
     });
 
-    await this.loadHistory();
-    this.filterHistory(this.searchInput.value, this.filterSelect.value);
-    this.showToast('Item deleted', 'success');
+    if (!skipConfirm) {
+      await this.loadHistory();
+      this.filterHistory(this.searchInput.value, this.filterSelect.value);
+      this.showToast('Item deleted', 'success');
+    }
   }
 
   private async clearAllHistory() {
@@ -376,6 +461,155 @@ class HistoryApp {
       .replace(/[^a-z0-9]/gi, '_')
       .toLowerCase()
       .slice(0, 50);
+  }
+
+  /**
+   * Toggle batch mode
+   */
+  private toggleBatchMode() {
+    this.batchMode = !this.batchMode;
+    document.body.classList.toggle('batch-mode', this.batchMode);
+    this.selectedItems.clear();
+    this.renderHistory();
+  }
+
+  /**
+   * Toggle select all items
+   */
+  private toggleSelectAll() {
+    if (this.selectAllCheckbox?.checked) {
+      for (const item of this.filteredHistory) {
+        this.selectedItems.add(`${item.timestamp}`);
+      }
+    } else {
+      this.selectedItems.clear();
+    }
+    this.renderHistory();
+  }
+
+  /**
+   * Toggle item selection
+   */
+  private toggleItemSelection(item: ConversionResult) {
+    const key = `${item.timestamp}`;
+    if (this.selectedItems.has(key)) {
+      this.selectedItems.delete(key);
+    } else {
+      this.selectedItems.add(key);
+    }
+    this.renderHistory();
+  }
+
+  /**
+   * Batch download
+   */
+  private async batchDownload() {
+    const selected = this.getSelectedItems();
+    if (selected.length === 0) {
+      this.showToast('No items selected', 'error');
+      return;
+    }
+
+    let downloaded = 0;
+    for (const item of selected) {
+      this.downloadItem(item);
+      downloaded++;
+    }
+
+    this.showToast(`Downloaded ${downloaded} items`, 'success');
+    this.exitBatchMode();
+  }
+
+  /**
+   * Batch delete
+   */
+  private async batchDelete() {
+    const selected = this.getSelectedItems();
+    if (selected.length === 0) {
+      this.showToast('No items selected', 'error');
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to delete ${selected.length} items?`)) return;
+
+    for (const item of selected) {
+      await this.deleteItem(item, false);
+    }
+
+    await this.loadHistory();
+    this.filterHistory(this.searchInput.value, this.filterSelect.value);
+    this.showToast(`Deleted ${selected.length} items`, 'success');
+    this.exitBatchMode();
+  }
+
+  /**
+   * Get selected items
+   */
+  private getSelectedItems(): ConversionResult[] {
+    return this.filteredHistory.filter(item =>
+      this.selectedItems.has(`${item.timestamp}`)
+    );
+  }
+
+  /**
+   * Exit batch mode
+   */
+  private exitBatchMode() {
+    this.batchMode = false;
+    this.selectedItems.clear();
+    document.body.classList.remove('batch-mode');
+    if (this.selectAllCheckbox) {
+      this.selectAllCheckbox.checked = false;
+    }
+    this.renderHistory();
+  }
+
+  /**
+   * Export history
+   */
+  private async exportHistory() {
+    try {
+      // Get all history from IndexedDB
+      const allHistory = await indexedDBStorage.getAllHistory();
+
+      // Create JSON export
+      const json = JSON.stringify(allHistory, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+
+      // Download
+      const timestamp = new Date().toISOString().slice(0, 10);
+      await chrome.downloads.download({
+        url,
+        filename: `mdflow/history_export_${timestamp}.json`,
+        saveAs: true,
+      });
+
+      URL.revokeObjectURL(url);
+      this.showToast('History exported successfully!', 'success');
+    } catch (error) {
+      console.error('Export failed:', error);
+      this.showToast('Export failed', 'error');
+    }
+  }
+
+  /**
+   * Re-export selected item with different format
+   */
+  private async reexportSelectedItem() {
+    if (!this.selectedItem) return;
+
+    // For now, just download the markdown
+    // In the future, this could support HTML/TXT/PDF export
+    this.downloadItem(this.selectedItem);
+  }
+
+  /**
+   * Get statistics
+   */
+  async getStatistics() {
+    const stats = await indexedDBStorage.getHistoryStats();
+    return stats;
   }
 }
 
