@@ -1,6 +1,10 @@
 import TurndownService from 'turndown';
 import { gfm } from 'turndown-plugin-gfm';
 import type { Parser, ConversionResult, ConversionOptions, ConversionMetadata } from '@/types';
+import { MathFormatter } from '@/core/processors/math-formatter';
+import { CodeFormatter } from '@/core/processors/code-formatter';
+import { ImageProcessor } from '@/core/processors/image-processor';
+import { TableFormatter } from '@/core/processors/table-formatter';
 
 /**
  * HTML to Markdown Parser using TurndownJS
@@ -8,6 +12,10 @@ import type { Parser, ConversionResult, ConversionOptions, ConversionMetadata } 
  */
 export class HTMLParser implements Parser {
   private turndownService: TurndownService;
+  private mathFormatter: MathFormatter;
+  private codeFormatter: CodeFormatter;
+  private imageProcessor: ImageProcessor;
+  private tableFormatter: TableFormatter;
 
   constructor() {
     this.turndownService = new TurndownService({
@@ -24,6 +32,12 @@ export class HTMLParser implements Parser {
     // Add GitHub Flavored Markdown support
     this.turndownService.use(gfm);
 
+    // Initialize processors
+    this.mathFormatter = new MathFormatter();
+    this.codeFormatter = new CodeFormatter();
+    this.imageProcessor = new ImageProcessor();
+    this.tableFormatter = new TableFormatter();
+
     // Custom rules for better conversion
     this.addCustomRules();
   }
@@ -38,12 +52,33 @@ export class HTMLParser implements Parser {
   /**
    * Parse HTML content and convert to Markdown
    */
-  async parse(content: string, options: ConversionOptions): Promise<ConversionResult> {
+  async parse(content: string, options: ConversionOptions, baseUrl?: string): Promise<ConversionResult> {
     // Clean the HTML before conversion
-    const cleanedHtml = this.cleanHtml(content);
+    let cleanedHtml = this.cleanHtml(content);
 
-    // Convert to Markdown
-    const markdown = this.turndownService.turndown(cleanedHtml);
+    // Process code blocks with language detection
+    cleanedHtml = this.codeFormatter.processCodeBlocks(cleanedHtml);
+
+    // Process tables
+    cleanedHtml = this.tableFormatter.processTables(cleanedHtml);
+
+    // Process images (download or rewrite paths)
+    if (options.downloadImages) {
+      cleanedHtml = await this.imageProcessor.processImages(cleanedHtml, {
+        downloadImages: true,
+        imagePath: 'mdflow/images',
+        rewriteAbsolute: false,
+      }, baseUrl);
+    }
+
+    // Extract formulas for later restoration
+    const { html: htmlWithoutFormulas, formulas } = this.mathFormatter.extractWithReplacement(cleanedHtml);
+
+    // Convert to Markdown using TurndownJS
+    let markdown = this.turndownService.turndown(htmlWithoutFormulas);
+
+    // Restore formulas in Markdown
+    markdown = this.mathFormatter.restoreFormulas(markdown, formulas);
 
     // Extract metadata
     const metadata = this.extractMetadata(content, markdown);
@@ -133,19 +168,17 @@ export class HTMLParser implements Parser {
    */
   private extractLanguage(node: HTMLElement): string {
     const className = node.className || '';
-    const classList = className.split(' ');
 
-    // Check for common language class patterns
-    for (const cls of classList) {
-      if (cls.startsWith('language-')) {
-        return cls.replace('language-', '');
-      }
-      if (cls.startsWith('lang-')) {
-        return cls.replace('lang-', '');
-      }
+    // Use CodeFormatter to extract language
+    let language = this.codeFormatter.extractLanguageFromClass(className);
+
+    if (!language) {
+      // Try to detect from content
+      const codeContent = node.textContent || '';
+      language = this.codeFormatter.detectLanguage(codeContent);
     }
 
-    return '';
+    return language;
   }
 
   /**
