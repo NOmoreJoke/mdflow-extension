@@ -25,6 +25,11 @@ export default defineConfig({
           if (name.endsWith('.css')) return '[name][extname]';
           return 'assets/[name][extname]';
         },
+        // Inline all content script dependencies to avoid chunk loading issues
+        manualChunks: (id) => {
+          // Don't create chunks - bundle everything into entry files
+          return undefined;
+        },
       },
     },
   },
@@ -33,6 +38,20 @@ export default defineConfig({
       name: 'chrome-extension-fix',
       writeBundle() {
         const outDir = resolve(__dirname, 'dist');
+
+        // Convert content.js to IIFE format to avoid module loading issues
+        const contentJsPath = resolve(outDir, 'content.js');
+        if (existsSync(contentJsPath)) {
+          let contentCode = readFileSync(contentJsPath, 'utf-8');
+          // Remove export statements and wrap in IIFE
+          contentCode = contentCode
+            .replace(/export\s*{\s*([^}]+)\s*}/g, '') // Remove exports
+            .replace(/import\s*.*from\s*['"][^'"]+['"];?\s*/g, '') // Remove imports (already inlined by Rollup)
+            .trim();
+          // Wrap in IIFE
+          contentCode = `(function() {\n'use strict';\n${contentCode}\n})();`;
+          writeFileSync(contentJsPath, contentCode);
+        }
 
         // Copy HTML files to root and fix paths
         const htmlFiles = [
