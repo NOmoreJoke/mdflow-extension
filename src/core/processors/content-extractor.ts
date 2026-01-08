@@ -224,12 +224,21 @@ export class ContentExtractor {
     allElements.forEach(el => {
       const htmlEl = el as HTMLElement;
       const style = htmlEl.style;
-      const computedStyle = window.getComputedStyle?.(htmlEl);
+
+      // Try to get computed style, may fail on detached elements
+      let computedStyle: CSSStyleDeclaration | null = null;
+      try {
+        if (typeof window !== 'undefined' && window.getComputedStyle) {
+          computedStyle = window.getComputedStyle(htmlEl);
+        }
+      } catch {
+        // getComputedStyle may throw on detached elements
+      }
 
       if (
-        style.display === 'none' ||
-        style.visibility === 'hidden' ||
-        style.opacity === '0' ||
+        style?.display === 'none' ||
+        style?.visibility === 'hidden' ||
+        style?.opacity === '0' ||
         computedStyle?.display === 'none' ||
         computedStyle?.visibility === 'hidden' ||
         computedStyle?.opacity === '0'

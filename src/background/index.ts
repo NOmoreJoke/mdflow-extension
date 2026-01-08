@@ -114,7 +114,7 @@ class BackgroundService {
     try {
       // Get user config
       const configResult = await this.getConfig();
-      const config = (configResult.data || {}) as AppConfig;
+      const config = (configResult.success && configResult.data ? configResult.data : {}) as AppConfig;
 
       // Get conversion options
       const options = this.getConversionOptions(config);
@@ -151,7 +151,7 @@ class BackgroundService {
     try {
       // Get user config
       const configResult = await this.getConfig();
-      const config = (configResult.data || {}) as AppConfig;
+      const config = (configResult.success && configResult.data ? configResult.data : {}) as AppConfig;
 
       // Get conversion options
       const options = this.getConversionOptions(config);
@@ -230,8 +230,14 @@ class BackgroundService {
   private async handleMessage(message: Message, sender: chrome.runtime.MessageSender): Promise<MessageResponse> {
     try {
       switch (message.type) {
+        case 'CONVERT_PAGE':
+          return await this.handleConvertPageMessage(message.data);
+
+        case 'CONVERT_SELECTION':
+          return await this.handleConvertSelectionMessage(message.data);
+
         case 'CONVERT_FILE':
-          return await this.handleFileConversion(message.data.file);
+          return await this.handleFileConversion(message.data);
 
         case 'GET_HISTORY':
           return await this.getHistory();
@@ -273,26 +279,125 @@ class BackgroundService {
   }
 
   /**
+   * Handle CONVERT_PAGE message from popup
+   */
+  private async handleConvertPageMessage(data: { url?: string; options?: ConversionOptions }): Promise<MessageResponse> {
+    try {
+      // Get active tab
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id || !tab.url) {
+        return { success: false, error: 'No active tab' };
+      }
+
+      // Skip internal pages
+      if (tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://') || tab.url.startsWith('about:')) {
+        return { success: false, error: 'Cannot convert browser internal pages' };
+      }
+
+      // Get user config
+      const configResult = await this.getConfig();
+      const config = (configResult.success && configResult.data ? configResult.data : {}) as AppConfig;
+      const options = data.options || this.getConversionOptions(config);
+
+      // Send to content script
+      const response = await chrome.tabs.sendMessage(tab.id, {
+        type: 'CONVERT_PAGE',
+        data: { url: tab.url, options },
+      });
+
+      if (response?.success) {
+        const result = response.data as ConversionResult;
+
+        // Handle output based on config
+        if (config.autoDownload) {
+          await this.downloadFile(result);
+        } else {
+          await this.copyToClipboard(result.markdown);
+        }
+
+        return { success: true, data: result };
+      } else {
+        return { success: false, error: response?.error || 'Conversion failed' };
+      }
+    } catch (error) {
+      console.error('Error in handleConvertPageMessage:', error);
+      return { success: false, error: (error as Error).message };
+    }
+  }
+
+  /**
+   * Handle CONVERT_SELECTION message from popup
+   */
+  private async handleConvertSelectionMessage(data: { options?: ConversionOptions }): Promise<MessageResponse> {
+    try {
+      // Get active tab
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id || !tab.url) {
+        return { success: false, error: 'No active tab' };
+      }
+
+      // Skip internal pages
+      if (tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://') || tab.url.startsWith('about:')) {
+        return { success: false, error: 'Cannot convert browser internal pages' };
+      }
+
+      // Get user config
+      const configResult = await this.getConfig();
+      const config = (configResult.success && configResult.data ? configResult.data : {}) as AppConfig;
+      const options = data.options || this.getConversionOptions(config);
+
+      // Send to content script
+      const response = await chrome.tabs.sendMessage(tab.id, {
+        type: 'CONVERT_SELECTION',
+        data: { options },
+      });
+
+      if (response?.success) {
+        const result = response.data as ConversionResult;
+
+        // Always copy selection to clipboard
+        await this.copyToClipboard(result.markdown);
+
+        return { success: true, data: result };
+      } else {
+        return { success: false, error: response?.error || 'No selection' };
+      }
+    } catch (error) {
+      console.error('Error in handleConvertSelectionMessage:', error);
+      return { success: false, error: (error as Error).message };
+    }
+  }
+
+  /**
    * Handle file conversion
    */
-  private async handleFileConversion(file: File): Promise<MessageResponse> {
+  private async handleFileConversion(data: { fileName: string; fileType: string; fileData: string }): Promise<MessageResponse> {
     try {
-      const fileType = file.type;
-      const fileName = file.name.toLowerCase();
+      const { fileName, fileType, fileData } = data;
+
+      // Reconstruct File from base64 data
+      const binaryString = atob(fileData);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      const blob = new Blob([bytes], { type: fileType });
+      const file = new File([blob], fileName, { type: fileType });
+
       const configResult = await this.getConfig();
-      const config = (configResult.data || {}) as AppConfig;
+      const config = (configResult.success && configResult.data ? configResult.data : {}) as AppConfig;
       const options = this.getConversionOptions(config);
 
       let result: ConversionResult;
 
       // Detect file type and use appropriate parser
-      if (fileType === 'application/pdf' || fileName.endsWith('.pdf')) {
+      if (fileType === 'application/pdf' || fileName.toLowerCase().endsWith('.pdf')) {
         result = await this.pdfParser.parse(file, options);
       } else if (
         fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
         fileType === 'application/msword' ||
-        fileName.endsWith('.docx') ||
-        fileName.endsWith('.doc')
+        fileName.toLowerCase().endsWith('.docx') ||
+        fileName.toLowerCase().endsWith('.doc')
       ) {
         result = await this.docxParser.parse(file, options);
       } else {
@@ -429,7 +534,7 @@ class BackgroundService {
 
       // Get config to check if notification should be shown
       const configResult = await this.getConfig();
-      const config = configResult.data as AppConfig;
+      const config = (configResult.success && configResult.data ? configResult.data : {}) as AppConfig;
 
       if (config.showNotifications !== false) {
         this.showNotification('Copied to clipboard!', 'success');
@@ -528,15 +633,13 @@ class BackgroundService {
    * Show system notification
    */
   private showNotification(message: string, type: 'success' | 'error' = 'success') {
-    const notificationOptions: chrome.notifications.NotificationOptions = {
+    chrome.notifications.create({
       type: 'basic',
       iconUrl: chrome.runtime.getURL('icons/icon48.png'),
       title: type === 'success' ? 'Success' : 'Error',
       message,
       priority: 2,
-    };
-
-    chrome.notifications.create(notificationOptions);
+    } as chrome.notifications.NotificationOptions<true>);
   }
 
   /**
@@ -548,7 +651,7 @@ class BackgroundService {
   ): Promise<MessageResponse> {
     try {
       const configResult = await this.getConfig();
-      const config = (configResult.data || {}) as AppConfig;
+      const config = (configResult.success && configResult.data ? configResult.data : {}) as AppConfig;
       const finalOptions = { ...options, ...this.getConversionOptions(config) };
 
       // Create callback for task completion

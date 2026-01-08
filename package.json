@@ -16,9 +16,11 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@types/turndown": "^5.0.6",
     "date-fns": "^3.3.1",
     "idb": "^8.0.0",
     "mammoth": "^1.7.1",
+    "marked": "^17.0.1",
     "pdfjs-dist": "^4.0.379",
     "turndown": "^7.1.2",
     "turndown-plugin-gfm": "^1.0.2"

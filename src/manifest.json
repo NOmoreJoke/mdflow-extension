@@ -42,7 +42,8 @@
     "downloads",
     "clipboardWrite",
     "notifications",
-    "activeTab"
+    "activeTab",
+    "scripting"
   ],
 
   "host_permissions": [

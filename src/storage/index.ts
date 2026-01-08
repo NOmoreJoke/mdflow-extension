@@ -6,8 +6,12 @@
 export { ChromeStorageService, storageLocal, storageSync } from './chrome-storage';
 export { IndexedDBStorage, indexedDBStorage } from './indexed-db';
 
+// Alias for convenience - used by rule-manager and template-manager
+export { storageLocal as chromeStorage } from './chrome-storage';
+
 // Re-export types for convenience
 export type { StorageService } from '@/types';
 
 // Storage keys and constants
 export * from '@/types/config';
+

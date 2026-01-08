@@ -32,12 +32,21 @@ export class NoiseFilter {
     elements.forEach(el => {
       const htmlEl = el as HTMLElement;
       const style = htmlEl.style;
-      const computedStyle = window.getComputedStyle?.(htmlEl);
+
+      // Try to get computed style, but it may fail for DOMParser-created elements
+      let computedStyle: CSSStyleDeclaration | null = null;
+      try {
+        if (typeof window !== 'undefined' && window.getComputedStyle) {
+          computedStyle = window.getComputedStyle(htmlEl);
+        }
+      } catch {
+        // getComputedStyle may throw on detached elements
+      }
 
       const isHidden =
-        style.display === 'none' ||
-        style.visibility === 'hidden' ||
-        style.opacity === '0' ||
+        style?.display === 'none' ||
+        style?.visibility === 'hidden' ||
+        style?.opacity === '0' ||
         computedStyle?.display === 'none' ||
         computedStyle?.visibility === 'hidden' ||
         computedStyle?.opacity === '0' ||

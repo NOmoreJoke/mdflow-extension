@@ -45,46 +45,41 @@ class PopupApp {
 
   private async convertCurrentPage() {
     try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tab.id) return;
-
-      // Send message to background script
-      const response = await chrome.tabs.sendMessage(tab.id, {
+      // Send message to background script which will relay to content script
+      const response = await chrome.runtime.sendMessage({
         type: 'CONVERT_PAGE',
-        data: { url: tab.url },
+        data: {},
       });
 
-      if (response.success) {
+      if (response && response.success) {
         this.showToast('Page converted successfully!', 'success');
         await this.loadRecentConversions();
       } else {
-        this.showToast('Conversion failed: ' + response.error, 'error');
+        this.showToast('Conversion failed: ' + (response?.error || 'Unknown error'), 'error');
       }
     } catch (error) {
       console.error('Error converting page:', error);
-      this.showToast('An error occurred', 'error');
+      this.showToast('Error: ' + (error as Error).message, 'error');
     }
   }
 
   private async convertSelection() {
     try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tab.id) return;
-
-      const response = await chrome.tabs.sendMessage(tab.id, {
+      // Send message to background script which will relay to content script
+      const response = await chrome.runtime.sendMessage({
         type: 'CONVERT_SELECTION',
         data: {},
       });
 
-      if (response.success) {
+      if (response && response.success) {
         this.showToast('Selection converted!', 'success');
         await this.loadRecentConversions();
       } else {
-        this.showToast('Conversion failed: ' + response.error, 'error');
+        this.showToast('Conversion failed: ' + (response?.error || 'No selection'), 'error');
       }
     } catch (error) {
       console.error('Error converting selection:', error);
-      this.showToast('No selection or error occurred', 'error');
+      this.showToast('Error: ' + (error as Error).message, 'error');
     }
   }
 
@@ -133,20 +128,33 @@ class PopupApp {
     this.showToast(`Processing ${isPdf ? 'PDF' : 'DOCX'} file...`, 'info');
 
     try {
+      // Convert File to base64 since File objects can't be serialized through sendMessage
+      const arrayBuffer = await file.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
+      let binaryString = '';
+      for (let i = 0; i < uint8Array.length; i++) {
+        binaryString += String.fromCharCode(uint8Array[i]);
+      }
+      const base64Data = btoa(binaryString);
+
       const response = await chrome.runtime.sendMessage({
         type: 'CONVERT_FILE',
-        data: { file },
+        data: {
+          fileName: file.name,
+          fileType: file.type,
+          fileData: base64Data,
+        },
       });
 
-      if (response.success) {
+      if (response && response.success) {
         this.showToast('File converted successfully!', 'success');
         await this.loadRecentConversions();
       } else {
-        this.showToast('Conversion failed: ' + response.error, 'error');
+        this.showToast('Conversion failed: ' + (response?.error || 'Unknown error'), 'error');
       }
     } catch (error) {
       console.error('Error processing file:', error);
-      this.showToast('An error occurred while processing the file', 'error');
+      this.showToast('An error occurred: ' + (error as Error).message, 'error');
     }
   }
 
