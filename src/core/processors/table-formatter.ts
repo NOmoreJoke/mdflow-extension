@@ -84,14 +84,14 @@ export class TableFormatter {
   /**
    * Parse table row
    */
-  private parseRow(cellElements: Element[], isHeader: boolean): TableRow {
+  private parseRow(cellElements: Element[], isHeaderRow: boolean): TableRow {
     const cells: TableCell[] = [];
 
     for (const cellElement of cellElements) {
       const text = this.cleanCellText(cellElement.textContent || '');
       const colspan = parseInt(cellElement.getAttribute('colspan') || '1', 10);
       const rowspan = parseInt(cellElement.getAttribute('rowspan') || '1', 10);
-      const isHeader = cellElement.tagName === 'TH' || isHeader;
+      const isHeader = cellElement.tagName === 'TH' || isHeaderRow;
 
       // Detect alignment from style or class
       const alignment = this.detectAlignment(cellElement);
@@ -105,7 +105,7 @@ export class TableFormatter {
       });
     }
 
-    return { cells, isHeader };
+    return { cells, isHeader: isHeaderRow };
   }
 
   /**

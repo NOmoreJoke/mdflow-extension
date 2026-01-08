@@ -2,19 +2,18 @@
  * Unit Tests for PDFParser
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { PDFParser } from '@/core/parsers/pdf-parser';
 import type { ConversionOptions } from '@/types';
 
-// Mock PDF.js
-vi.mock('pdfjs-dist', () => ({
-  default: {
+// Mock PDF.js with importOriginal to preserve required exports
+vi.mock('pdfjs-dist', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('pdfjs-dist')>();
+  return {
+    ...actual,
     getDocument: vi.fn(),
-    GlobalWorkerOptions: {
-      workerSrc: '',
-    },
-  },
-}));
+  };
+});
 
 describe('PDFParser', () => {
   let parser: PDFParser;

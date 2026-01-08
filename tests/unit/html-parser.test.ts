@@ -81,9 +81,9 @@ describe('HTMLParser', () => {
       const html = '<ul><li>Item 1</li><li>Item 2</li><li>Item 3</li></ul>';
       const result = await parser.parse(html, defaultOptions);
 
-      expect(result.markdown).toContain('- Item 1');
-      expect(result.markdown).toContain('- Item 2');
-      expect(result.markdown).toContain('- Item 3');
+      expect(result.markdown).toContain('-   Item 1');
+      expect(result.markdown).toContain('-   Item 2');
+      expect(result.markdown).toContain('-   Item 3');
     });
 
     it('should convert ordered lists', async () => {
@@ -119,7 +119,7 @@ describe('HTMLParser', () => {
       const html = '<ul><li>Item 1<ul><li>Subitem 1</li><li>Subitem 2</li></ul></li></ul>';
       const result = await parser.parse(html, defaultOptions);
 
-      expect(result.markdown).toContain('- Item 1');
+      expect(result.markdown).toContain('-   Item 1');
       expect(result.markdown).toMatch(/\s+-\s+Subitem/);
     });
 
@@ -205,7 +205,7 @@ describe('HTMLParser', () => {
       expect(result.markdown).toContain('## Introduction');
       expect(result.markdown).toContain('**introduction**');
       expect(result.markdown).toContain('### Key Points');
-      expect(result.markdown).toContain('- Point 1');
+      expect(result.markdown).toContain('-   Point 1');
       expect(result.markdown).toContain('```javascript');
       expect(result.markdown).toContain("return 'Hello, World!'");
     });
